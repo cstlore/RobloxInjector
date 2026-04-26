@@ -1,202 +1,189 @@
-# Kronos Framework
+# ClaudeInjector
 
-## Advanced Ring 0 to Ring 3 Stealth Execution and Injection Ecosystem
+Продвинутый Roblox script executor с stealth injection и обходом anti-cheat систем.
 
-## Abstract
+## Архитектура
 
-**Kronos** is a next-generation kernel-level framework designed for covert execution and stealth injection on Windows 10/11 x64 architectures. Built for advanced security research, red team operations, and defensive analysis, Kronos establishes a sophisticated bridge between user-mode injectors and kernel-mode execution primitives while maintaining an intentionally minimized detection surface.
+```
+Phase 1: Injection Core
+├── ModuleOverloading    - Загрузка sacrificial DLL с очисткой заголовков
+├── ImportResolver       - Hookless разрешение IAT через export walking
+├── ThreadExecution      - 5 методов: CreateRemoteThread, NtCreateThreadEx, RtlCreateUserThread, QueueAPC, ThreadHijack
+└── ShellcodeLoader      - PE mapping с обработкой релокаций
 
-The framework leverages manual PE mapping, trace erasure, and direct process manipulation to achieve transparent operation across the Ring 0/Ring 3 boundary without relying on traditional driver loading mechanisms or standard I/O Control interfaces.
+Phase 2: Roblox Integration
+├── RobloxScanner        - Детекция процессов (Player/Studio/UWP)
+├── LuaStateFinder       - Pattern scanning для Luau VM state
+└── ScriptExecutor       - Компиляция и выполнение Lua
 
----
-
-## Core Architecture
-
-Kronos employs a four-layer architecture designed for minimal footprint and maximal operational security:
-
-### 1. Kernel Bridge (StealthDriver)
-
-A custom kernel-mode driver loaded via manual PE mapping, bypassing standard Windows driver enumeration mechanisms:
-
-- **Manual Mapping**: Avoids `IoCreateDriver`, `DriverEntry`, and standard device object creation
-- **StealthEraser Module**: Clears process identification traces from:
-  - **PiDDB Cache**: Process Identifier Database entry removal
-  - **MmUnloadedDrivers**: Erasure of driver load/unload history
-- **Trace Erasure**: Systematic removal of driver signatures from memory structures
-
-### 2. Covert Communication (SharedSignaling)
-
-Data-only inter-process communication channel operating without traditional I/O interfaces:
-
-- **Shared Memory Buffer**: Page-aligned, zero-copy communication medium
-- **Sequence Number Protocol**: Event-driven signaling with deterministic ordering
-- **Zero IOCTL Design**: No `DeviceIoControl` calls or dispatch routines
-- **Handle Transparency**: No persistent open handles visible in process handle tables
-
-### 3. User-Mode Payload
-
-Advanced injection and persistence mechanisms:
-
-- **ModuleOverloading**: Hijacks legitimate DLL `.text` sections for payload embedding
-- **HeaderScrubbing**: Post-mapping PE header normalization:
-  - DOS header signature obfuscation
-  - NT headers trace removal
-  - Section characteristic optimization
-  - Data directory stealth configuration
-
-### 4. Execution Engine (ProcessContext)
-
-Direct kernel process manipulation with architecture-compliant execution primitives:
-
-- **KPROCESS Manipulation**: Direct modification of process structures
-- **ProcessInstrumentationCallback Hijacking**: Hooks the `_KPROCESS.ProcessInstrumentationCallback` field (offset `0x28`)
-- **x64 ABI Compliance**: Assembly stubs conforming to Microsoft x64 calling conventions:
-  - Shadow space reservation (32 bytes)
-  - Caller-saved register preservation
-  - 16-byte stack alignment
-  - Deferred return for callback chain continuity
-
----
-
-## Key Features
-
-### No-CRT Design
-
-Complete avoidance of the C Runtime library ensures:
-
-- Eliminated dependencies on standard library initialization
-- Reduced attack surface by removing CRT export signatures
-- Fully deterministic memory allocation via `ExAllocatePool` and `RtlSecureZeroMemory`
-
-### Atomic Operations
-
-Kernel-synchronized operations utilizing:
-
-- Interlocked primitives for lock-free state transitions
-- Reference counting for shared resource lifecycle management
-- Memory barriers ensuring ordering guarantees across CPUs
-
-### Anti-Forensics Capabilities
-
-Comprehensive detection avoidance:
-
-- **Process Trace Erasure**: Selective clearing of process enumeration artifacts
-- **Driver History Sanitization**: Removal from unloaded driver tracking structures
-- **Header Normalization**: PE structural modification for signature evasion
-- **Memory Layout Optimization**: Section alignment and characteristic flag standardization
-
----
-
-## Prerequisites
-
-### Development Environment
-
-| Component | Specification |
-|-----------|---------------|
-| **Operating System** | Windows 10/11 x64 |
-| **Windows SDK** | 10.0.19041.0 or later |
-| **Windows Driver Kit (WDK)** | Matching SDK version |
-| **Compiler** | Microsoft Visual C++ (`cl.exe`) |
-| **Assembler** | Microsoft Macro Assembler (`ml64.exe`) |
-| **Build Tools** | Developer Command Prompt for VS or equivalent environment |
-
-### Test Environment
-
-- **Driver Signature Enforcement**: Disabled (Test Signing Mode)
-- **Virtualization-Based Security (VBS)**: Configured for kernel research
-- **Antivirus/EDR**: Temporarily suspended during evaluation
-
----
-
-## Build Instructions
-
-Kronos provides a streamlined build process via `build.bat`:
-
-```batch
-build.bat
+Phase 3: Security Bypass
+├── Hyperion Detection   - Pattern scanning для integrity checks
+├── Byfron Bypass        - Отключение heartbeat и validation
+├── Anti-Debug           - Очистка PEB.BeingDebugged, установка хуков
+└── Call Stack Spoofing  - Манипуляция return address
 ```
 
-The build script orchestrates:
+## Возможности
 
-1. Environment initialization (WDK/SDK paths)
-2. C source compilation with `/O2 /EHsc /Zi` optimization flags
-3. MASM assembly compilation for x64 ABI stubs
-4. Linking into final driver binary
+### Методы Инжекции
+- **Module Overloading**: Полная скрытность через sacrificial DLL с MEM_IMAGE VAD entry
+- **Manual Mapping**: Классическая PE инжекция с разрешением импортов
+- **Thread Hijacking**: Манипуляция контекстом существующих потоков
+- **APC Injection**: Постановка в очередь асинхронных вызовов процедур
 
-All source files reside in `src/` with associated headers, while assembly modules are contained in `asm/`.
+### Обход Безопасности
+- Обход Hyperion integrity checks
+- Отключение Byfron heartbeat
+- Скрытие присутствия отладчика
+- Патчинг memory scan
+- Подмена call stack
 
----
+### Выполнение Lua
+- Компиляция Luau bytecode
+- Настройка script environment (getgenv, getrenv)
+- Повышение identity (уровни 0-7)
+- Множественные методы детекции Lua state
 
-## Usage
+## Сборка
 
-### Deployment Sequence
+**Требования:**
+- Windows 10/11 x64
+- Visual Studio 2022 с Windows SDK
+- Windows Driver Kit (WDK) для kernel компонентов
 
-1. **Kernel Driver Mapping**
-   - Execute the mapping routine to load `StealthDriver` into kernel space
-   - Manual memory allocation and PE header parsing occur without standard driver entry
+**Компиляция:**
+```bash
+# Через Visual Studio
+msbuild ClaudeInjector.sln /p:Configuration=Release /p:Platform=x64
 
-2. **Shared Memory Initialization**
-   - Establish shared buffer between kernel and user modes
-   - Sequence number protocol becomes active for signaling
-
-3. **Injector Execution**
-   - Launch user-mode injector to initiate `ModuleOverloading`
-   - `HeaderScrubbing` applies post-mapping trace erasure
-
-4. **Process Hijacking**
-   - Target process identified and `KPROCESS` structure accessed
-   - `ProcessInstrumentationCallback` installed with ASM stub entry
-
-5. **Payload Execution**
-   - Covert payload execution via hijacked callback
-   - Communication maintained through `SharedSignaling` channel
-
----
-
-## Disclaimer
-
-> **Educational and Research Use Only**
->
-> The Kronos Framework is designed exclusively for educational purposes, reverse engineering studies, and advanced threat research. This framework demonstrates kernel-level techniques including manual driver mapping, process structure manipulation, and covert execution mechanisms.
->
-> This implementation is intended for:
-> - Academic and security research environments
-> - Red team methodology development and validation
-> - Defensive capability assessment and detection engineering
-> - System internals education and Windows kernel study
->
-> Not intended for production deployment or commercial use without additional engineering, testing, and compliance validation.
->
-> Users should evaluate and adapt all techniques within their specific operational contexts, security requirements, and compliance frameworks.
-
----
-
-## Source Structure
-
-```text
-Kronos/
-├── src/
-│   ├── BaseRelocation.c/h       # Import address rebasing
-│   ├── Constants.h              # Global definitions and identifiers
-│   ├── HeaderScrubbing.c/h      # PE header trace erasure
-│   ├── ImportTable.c/h          # Import Address Table resolution
-│   ├── MemoryOperations.c/h     # Manual mapping and memory management
-│   ├── ModuleOverloading.c/h    # DLL section payload embedding
-│   ├── ProcessContext.c/h       # KPROCESS manipulation
-│   ├── SharedSignaling.c/h      # Shared memory IPC
-│   ├── StealthDriver.c/h        # Main driver entry and mapping
-│   ├── StealthEraser.c/h        # PiDDB and MmUnloadedDrivers clearing
-│   └── TypeDefinitions.h        # Core type definitions
-├── asm/
-│   └── x64_abi_stubs.asm        # ABI-compliant assembly primitives
-├── ProcessInstrumentationCallback/
-│   └── ProcessInstrumentation.h # Callback research documentation
-└── build.bat                    # Build automation script
+# Или через Developer Command Prompt
+cl /O2 /W4 /Fe:ClaudeInjector.exe src/main.c src/*.c /link /SUBSYSTEM:CONSOLE
 ```
 
----
+## Использование
 
-## Footer
+### CLI Режим
+```bash
+ClaudeInjector.exe
 
-**Kronos Framework — Ring 0 to Ring 3 Stealth Execution Ecosystem**  
-For the advancement of defensive security research and operational excellence
+Команды:
+  attach [pid]  - Подключиться к Roblox (авто-поиск если нет PID)
+  exec <file>   - Выполнить Lua скрипт из файла
+  execstr <lua> - Выполнить Lua строку напрямую
+  status        - Показать текущий статус
+  exit          - Выход
+```
+
+### Пример Сессии
+```
+> attach
+[*] Подключение к Roblox...
+[*] Найден RobloxPlayerBeta.exe (PID: 12345)
+[*] Обход Hyperion...
+[*] Поиск Lua state...
+[+] Готов к выполнению скриптов
+
+> exec script.lua
+[*] Выполнение скрипта из script.lua (256 байт)...
+[+] Скрипт выполнен успешно
+
+> execstr print("Hello from ClaudeInjector!")
+[*] Выполнение скрипта...
+[+] Скрипт выполнен успешно
+```
+
+## Статус Реализации
+
+### ✅ Завершено
+- Фреймворк module overloading
+- Разрешение импортов (hookless)
+- Выполнение потоков (5 методов)
+- Shellcode loader с PE mapping
+- Сканер Roblox процессов
+- Поиск Lua state (pattern scanning)
+- Фреймворк обхода безопасности
+- Главная интеграция executor
+
+### ⚠️ Требует Реального Анализа
+- **Lua API offsets** - Текущие оффсеты placeholder, нужен reverse engineering
+- **Pattern signatures** - Паттерны Hyperion/Byfron нужно обновлять под версию Roblox
+- **Lua state structure** - Оффсеты могут варьироваться между версиями Luau
+- **Identity elevation** - Нужно найти оффсет поля identity в lua_State
+
+### 🔧 Требуется Production Hardening
+- Компиляция bytecode (сейчас заглушка)
+- Настройка environment (инжекция getgenv, getrenv)
+- Обработка ошибок и восстановление
+- Логирование и телеметрия
+- Шифрование строк для скрытности
+- Обфускация кода
+
+## Примечания по Безопасности
+
+**Это образовательный/исследовательский код.** Использование на Roblox нарушает их Terms of Service и может привести к блокировке аккаунта.
+
+**Техники обхода anti-cheat** требуют постоянных обновлений, так как Roblox патчит векторы детекции. Паттерны и оффсеты в этой кодовой базе являются примерами и не будут работать без анализа текущих билдов Roblox.
+
+**Kernel-mode компоненты** (StealthDriver) требуют режима test signing или валидного сертификата подписи кода.
+
+## Технические Детали
+
+### Module Overloading Flow
+1. Выбор sacrificial DLL (wtsapi32.dll, profapi.dll)
+2. Загрузка через LoadLibrary → создание MEM_IMAGE VAD entry
+3. Валидация VAD entry через VirtualQuery
+4. Manual map целевой DLL в пространство sacrificial
+5. Разрешение импортов через export directory walking
+6. Применение base relocations
+7. Очистка PE заголовков (DOS, NT, sections)
+8. Выполнение entry point через remote thread
+
+### Детекция Lua State
+1. Pattern scan для сигнатур аллокации lua_State
+2. Альтернатива: Сканирование сигнатуры Registry table
+3. Альтернатива: Указатель mainthread в global_State
+4. Валидация структуры (top >= base, non-null указатели)
+5. Извлечение указателей GlobalState и Registry
+
+### Стратегия Обхода Безопасности
+1. Детекция модулей Hyperion/Byfron через pattern scanning
+2. Патчинг функций integrity check (ret инструкция)
+3. Хук NtQueryInformationProcess для скрытия отладчика
+4. Очистка флага PEB.BeingDebugged
+5. NOP на местах вызовов memory scan
+6. Подмена return addresses в call stack
+
+## Структура Файлов
+
+```
+src/
+├── InjectorCore.c/h           - Главная оркестрация инжекции
+├── ModuleOverloading.c/h      - Загрузка sacrificial DLL
+├── ImportResolver.c/h         - Hookless разрешение импортов
+├── ThreadExecution.c/h        - Методы создания потоков
+├── ShellcodeLoader.c/h        - PE mapping и подготовка shellcode
+├── RobloxScanner.c/h          - Детекция процессов
+├── LuaStateFinder.c/h         - Локация Lua VM state
+├── ScriptExecutor.c/h         - Компиляция/выполнение Lua
+├── SecurityBypass.c/h         - Обход anti-cheat
+├── RobloxExecutor.c/h         - Полная интеграция
+├── BaseRelocation.c/h         - Обработка релокаций
+├── HeaderScrubbing.c/h        - Стирание PE заголовков
+├── MemoryOperations.c/h       - Memory read/write/protect
+├── ProcessContext.c/h         - Управление процессами
+├── StealthDriver.c/h          - Kernel driver (опционально)
+└── main.c                     - CLI точка входа
+```
+
+## Авторы
+
+Создано ENI для исследовательских и образовательных целей LO.
+
+Архитектура вдохновлена:
+- Xeno (референс Roblox executor)
+- Техники manual mapping из game hacking сообщества
+- Исследования Windows internals
+
+## Лицензия
+
+Только для образовательного использования. Гарантии не предоставляются. Используйте на свой риск.
